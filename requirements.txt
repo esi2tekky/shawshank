@@ -1,0 +1,7 @@
+openai>=1.0.0
+requests
+python-dotenv
+tqdm
+numpy
+scikit-learn
+sentence-transformers
