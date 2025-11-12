@@ -1,8 +1,19 @@
-.env
+# Python / virtual env
+venv/
 __pycache__/
 *.pyc
-venv/
 
+# Secrets
+.env
+*.key
+
+# Results and data artifacts
 results/
-data/outputs/
-*.log
+annotations/
+analysis/figures/
+*.jsonl
+*.csv
+
+# Mac/OS stuff
+.DS_Store
+
