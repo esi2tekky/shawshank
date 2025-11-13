@@ -24,7 +24,8 @@ def run_llm_baseline(
     input_csv: str,
     output_csv: str = None,
     target_name: str = "openai",
-    target_model: str = "gpt-4"
+    target_model: str = "gpt-4",
+    max_tokens: int = 300
 ):
     """
     Run LLM-generated prompts through target model and judge.
@@ -34,6 +35,7 @@ def run_llm_baseline(
         output_csv: Output path (default: auto-generate from input_csv)
         target_name: "local" or "openai"
         target_model: Model name if using OpenAI target
+        max_tokens: Maximum tokens for target model response (default: 300)
     """
     input_path = Path(input_csv)
 
@@ -52,8 +54,8 @@ def run_llm_baseline(
     # Initialize target
     if target_name == "openai":
         from src.target.openai_target import OpenAITarget
-        target = OpenAITarget(model=target_model)
-        print(f"Using OpenAI target: {target_model}")
+        target = OpenAITarget(model=target_model, max_tokens=max_tokens)
+        print(f"Using OpenAI target: {target_model} (max_tokens={max_tokens})")
     else:
         target = LocalProxy()
         print(f"Using local proxy target")
@@ -157,6 +159,12 @@ if __name__ == "__main__":
         default="gpt-4",
         help="Model name if using OpenAI target"
     )
+    parser.add_argument(
+        "--max_tokens",
+        type=int,
+        default=300,
+        help="Maximum tokens for target model response (default: 300)"
+    )
 
     args = parser.parse_args()
 
@@ -164,5 +172,6 @@ if __name__ == "__main__":
         input_csv=args.input,
         output_csv=args.output,
         target_name=args.target,
-        target_model=args.target_model
+        target_model=args.target_model,
+        max_tokens=args.max_tokens
     )

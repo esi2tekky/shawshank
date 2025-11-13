@@ -7,8 +7,9 @@ client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 class OpenAITarget:
     """Wrapper for OpenAI chat models using new API client."""
-    def __init__(self, model="gpt-4"):
+    def __init__(self, model="gpt-4", max_tokens=300):
         self.model = model
+        self.max_tokens = max_tokens
 
     def query(self, prompt: str, convo_ctx: dict = None) -> dict:
         """Send a user prompt and return response + metadata."""
@@ -21,7 +22,7 @@ class OpenAITarget:
             model=self.model,
             messages=messages,
             temperature=0.2,
-            max_tokens=800
+            max_tokens=self.max_tokens
         )
         latency = time.time() - t0
         choice = resp.choices[0].message.content

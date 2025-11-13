@@ -91,11 +91,6 @@ Generate **B** prompts using the LLM-based attack generator (default B=50):
 python src/attacker/gpt_attacker.py --num 50 --output data/gpt_baseline.csv
 ```
 
-**Output:** `data/gpt_baseline.csv` with columns:
-```
-id, intent_category, intent_action, vague_action, category, prompt
-```
-
 ### Step 2: Test Against Target Model + Judge
 Feed prompts to target LLM and evaluate with GPT-4 judge:
 
@@ -106,11 +101,6 @@ python -m src.experiments.run_llm_attacker \
   --target_model gpt-4
 ```
 
-**Output:** `data/gpt_baseline_attack.csv` with added columns:
-```
-..., response, judge_label, judge_reason, target_metadata, timestamp_utc
-```
-
 ### Step 3: Human Annotation
 Perform manual validation of judge decisions:
 
@@ -118,35 +108,23 @@ Perform manual validation of judge decisions:
 python tools/human_annotator.py --input data/gpt_baseline_attack.csv
 ```
 
-**Interactive Controls:**
-- `y` / Enter → Mark as compliant (safe)
-- `n` → Mark as noncompliant (jailbreak success)
-- `s` → Skip
-- `q` → Quit and save
-
-**Output:** Adds `human_label` column to the CSV.
+**Output:** `data/gpt_baseline_labeled.csv` with columns:
+```
+id, intent_category, intent_action, vague_action, category, prompt, response, judge_label, judge_reason, human_label
+```
 
 ### Step 4: Analysis
 
-**Analyze LLM baseline performance:**
+**Analyze LLM baseline performance & Compare Human vs LLM Methods and Evaluation:**
 ```bash
 python analysis/analyze_llm_baseline.py
 ```
-Generates ASR by evasion strategy, ASR by intent category, and visualizations.
-
-**Compare Human vs LLM methods:**
 ```bash
 python analysis/compare_human_vs_llm.py
 ```
-Compares attack success rates between manual and ML-generated prompts.
-
-**Validate judge reliability:**
 ```bash
 python analysis/analyze_human_vs_judge.py
 ```
-Computes Cohen's κ, confusion matrix, and judge error rates.
-
----
 
 ## Repository Structure
 
@@ -154,8 +132,7 @@ Computes Cohen's κ, confusion matrix, and judge error rates.
 .
 ├── src/
 │   ├── attacker/
-│   │   ├── gpt_attacker.py          # Two-stage LLM attack generator
-│   │   └── llm_attacker.py          # Legacy single-stage generator
+│   │   ├── gpt_attacker.py          # Two-stage LLM attack corpus generator
 │   ├── target/
 │   │   ├── openai_target.py         # OpenAI API wrapper
 │   │   └── local_proxy.py           # Local stub for testing
@@ -165,18 +142,9 @@ Computes Cohen's κ, confusion matrix, and judge error rates.
 │   │   ├── run_llm_attacker.py      # LLM baseline pipeline
 │   │   └── run_human_baseline.py    # Human baseline pipeline
 │   └── utils/
-│       └── storage.py               # Data I/O utilities
-├── analysis/
-│   ├── analyze_llm_baseline.py      # LLM method analysis
-│   ├── compare_human_vs_llm.py      # Method comparison
-│   └── analyze_human_vs_judge.py    # Judge validation
-├── tools/
-│   ├── human_annotator.py           # Interactive labeling tool
-│   ├── csv_to_jsonl.py              # Format conversion
-│   └── export_for_annotation.py     # Prepare data for labeling
-├── data/
-│   ├── gpt_baseline.csv             # Generated prompts
-│   └── gpt_baseline_attack.csv      # Attack results
+├── analysis/...
+├── tools/...
+├── data/...
 ├── requirements.txt
 ├── Dockerfile
 └── .env.example
@@ -216,20 +184,6 @@ docker run -it --env-file .env -v $(pwd):/app shawshank:dev bash
 
 ---
 
-## Cost Management
-
-**API Usage:**
-- LLM generation: ~$0.01-0.03 per prompt (GPT-4)
-- Target queries: ~$0.01-0.05 per response (GPT-4)
-- Judge evaluations: ~$0.005-0.01 per classification
-
-**Recommendations:**
-- Start with B=10 for pilot runs to estimate costs
-- Monitor token usage via OpenAI dashboard
-- Use local models for iterative development
-
----
-
 ## Extending the Framework
 
 **Add New Attack Methods:**
@@ -250,15 +204,6 @@ class AnthropicTarget(TargetAPI):
         # Implement Claude API wrapper
         pass
 ```
-
-**Custom Metrics:**
-```python
-# analysis/diversity_analysis.py
-from sentence_transformers import SentenceTransformer
-# Cluster embeddings of successful prompts
-```
-
----
 
 ## Troubleshooting
 
