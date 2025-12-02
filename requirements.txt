@@ -5,3 +5,7 @@ tqdm
 numpy
 scikit-learn
 sentence-transformers
+vllm
+torch
+transformers
+accelerate
