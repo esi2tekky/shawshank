@@ -18,7 +18,7 @@ from sklearn.metrics import (
 from pathlib import Path
 
 # ==== CONFIG ====
-CSV_PATH = "annotations/human_baseline_labeled.csv"  # update if different
+CSV_PATH = "data/human_baseline_labeled.csv" 
 OUT_DIR = Path("analysis/figures")
 SUMMARY_PATH = Path("analysis/human_vs_judge_summary.md")
 OUT_DIR.mkdir(parents=True, exist_ok=True)

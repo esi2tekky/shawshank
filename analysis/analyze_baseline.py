@@ -19,7 +19,7 @@ import seaborn as sns
 from pathlib import Path
 
 # ==== CONFIG ====
-CSV_PATH = "analysis/human_baseline_results.csv"
+CSV_PATH = "data/human_baseline_labeled.csv"
 OUT_DIR = Path("analysis/figures")
 SUMMARY_PATH = Path("analysis/summary.md")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
