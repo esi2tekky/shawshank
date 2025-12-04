@@ -161,8 +161,8 @@ def run_all_tulu_models(seeds_path, output_dir, model_keys=None):
         try:
             # Ensure GPU is free before loading next model
             import torch
-            torch.cuda.empty_cache()
             import gc
+            torch.cuda.empty_cache()
             gc.collect()
             
             output_path = run_single_model(seeds_path, model_key, model_id, output_dir)
@@ -172,10 +172,13 @@ def run_all_tulu_models(seeds_path, output_dir, model_keys=None):
             print(f"ERROR: Failed to run {model_key}: {e}")
             results_summary[model_key] = f"ERROR: {e}"
             # Clean up on error
-            import torch
-            torch.cuda.empty_cache()
-            import gc
-            gc.collect()
+            try:
+                import torch
+                import gc
+                torch.cuda.empty_cache()
+                gc.collect()
+            except:
+                pass
         
         # Delay between models to ensure cleanup completes
         time.sleep(5)
