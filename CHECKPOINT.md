@@ -2,7 +2,7 @@
 
 **Date:** December 4, 2025  
 **Branch:** `attack_targets`  
-**Instance:** AWS EC2 g5.xlarge (us-west-2), IP: 18.236.65.13
+**Instance:** AWS EC2 g5.xlarge (us-west-2), IP: 18.237.105.90
 
 ---
 
@@ -10,7 +10,7 @@
 
 ### 1. Infrastructure Setup
 - ✅ AWS EC2 instance created and configured (g5.xlarge with NVIDIA A10G, 23GB VRAM)
-- ✅ SSH access configured (key: `229project.pem`)
+- ✅ SSH access configured (key: `shawshank.pem` at `/Users/esi/Downloads/shawshank.pem`)
 - ✅ Repository cloned and checked out to `attack_targets` branch
 - ✅ Conda environment set up with Python 3.10 (`shawshank` environment)
 - ✅ All dependencies installed (vllm, torch, transformers, accelerate, etc.)
@@ -37,6 +37,7 @@
 ### 4. Documentation
 - ✅ `SETUP_VLLM.md` - Complete AWS EC2 setup guide
 - ✅ `SSH_LOGIN_GUIDE.md` - Partner SSH access instructions
+- ✅ `ARCHITECTURE.md` - Comprehensive architecture documentation
 
 ---
 
@@ -70,7 +71,7 @@
 
 1. **Verify Target Factory** (5 minutes)
    ```bash
-   ssh -i ~/.ssh/229project.pem ec2-user@18.236.65.13
+   ssh -i ~/Downloads/shawshank.pem ec2-user@18.237.105.90
    source ~/miniconda3/bin/activate && conda activate shawshank
    cd ~/shawshank
    python3 -c "from src.target.target_factory import load_target; from src.config import OPEN_SOURCE_MODELS; target = load_target(OPEN_SOURCE_MODELS['tulu_sft']); print(target.query('Hello'))"
@@ -126,7 +127,7 @@
 
 ### 1. Connect to Instance
 ```bash
-ssh -i ~/.ssh/229project.pem ec2-user@18.236.65.13
+ssh -i ~/Downloads/shawshank.pem ec2-user@18.237.105.90
 ```
 
 ### 2. Activate Environment
@@ -267,10 +268,11 @@ export HF_TOKEN='your-token'
 
 - [x] vLLM loads Tulu models successfully
 - [x] Target factory works with vLLM backend
-- [ ] Human baseline runs on all three Tulu models
+- [x] Human baseline running on all three Tulu models (in progress)
 - [ ] Judge evaluations complete for all prompts
 - [ ] Results saved to JSONL files
-- [ ] GPU memory cleanup verified between models
+- [x] GPU memory cleanup verified between models
+- [x] Architecture documentation created
 
 ---
 
