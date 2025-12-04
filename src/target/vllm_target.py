@@ -3,14 +3,16 @@ from vllm import LLM, SamplingParams
 import torch
 
 class VLLMTarget(TargetAPI):
-    def __init__(self, model_path: str, gpu_memory_utilization=0.9):
+    def __init__(self, model_path: str, gpu_memory_utilization=0.6, max_model_len=2048):
         print(f"Loading local vLLM model: {model_path}...")
         self.model_name = model_path
         # Initialize vLLM engine - optimized for single GPU usage
+        # Reduced max_model_len to save KV cache memory on A10G (23GB)
         self.llm = LLM(
             model=model_path, 
-            dtype="auto",
+            dtype="bfloat16",
             gpu_memory_utilization=gpu_memory_utilization,
+            max_model_len=max_model_len,
             trust_remote_code=True,
             enforce_eager=True  # Often helps with compatibility on some GPUs
         )
