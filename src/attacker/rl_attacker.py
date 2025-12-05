@@ -387,6 +387,8 @@ class RLAttacker:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         model_name = getattr(self.target, 'model_name', None) or getattr(self.target, 'model', 'unknown')
+        # Sanitize model name for file paths (replace / and \ with _)
+        model_name = model_name.replace('/', '_').replace('\\', '_')
 
         print(f"\n{'='*60}")
         print("RL ATTACKER TRAINING")
@@ -491,13 +493,17 @@ class RLAttacker:
 
     def save(self, path: str):
         """Save model checkpoint."""
+        # Ensure parent directory exists
+        path_obj = Path(path)
+        path_obj.parent.mkdir(parents=True, exist_ok=True)
+        
         torch.save({
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
             "episode_rewards": self.episode_rewards,
             "episode_successes": self.episode_successes,
             "episode_lengths": self.episode_lengths,
-        }, path)
+        }, str(path_obj))
         print(f"Saved checkpoint to {path}")
 
     def load(self, path: str):
