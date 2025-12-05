@@ -54,6 +54,11 @@ class StructuredIndividual:
     parent_id: Optional[str] = None
     mutation_history: List[str] = None
 
+    # Evaluation results (populated during evaluation)
+    response: str = ""               # LLM response text
+    judge_reason: str = ""           # Judge's explanation
+    judge_label: str = ""            # compliant/noncompliant/uncertain
+
     def __post_init__(self):
         if self.mutation_history is None:
             self.mutation_history = []
@@ -87,6 +92,9 @@ class StructuredIndividual:
             "parent_id": self.parent_id,
             "mutation_history": self.mutation_history,
             "prompt": self.to_prompt(),
+            "response": self.response[:500] if self.response else "",  # Truncate for storage
+            "judge_reason": self.judge_reason,
+            "judge_label": self.judge_label,
         }
 
 
@@ -95,10 +103,12 @@ class StructuredIndividual:
 # ============================================================================
 
 def get_strategy_pool_sizes(strategy: str) -> Tuple[int, int]:
-    """Get the number of prefixes and suffixes for a strategy."""
+    """Get the number of prefixes and suffixes for a strategy. Always returns at least 1."""
     if strategy not in STRATEGIES:
         return 1, 1
-    return len(STRATEGIES[strategy]["prefixes"]), len(STRATEGIES[strategy]["suffixes"])
+    n_prefix = max(1, len(STRATEGIES[strategy]["prefixes"]))
+    n_suffix = max(1, len(STRATEGIES[strategy]["suffixes"]))
+    return n_prefix, n_suffix
 
 
 def mutate_swap_strategy(ind: StructuredIndividual) -> StructuredIndividual:
@@ -157,8 +167,8 @@ def mutate_remove_strategy(ind: StructuredIndividual) -> StructuredIndividual:
     # Reset indices to remaining strategy's pools
     remaining = new_ind.strategies[0]
     n_prefix, n_suffix = get_strategy_pool_sizes(remaining)
-    new_ind.prefix_idx = min(new_ind.prefix_idx, n_prefix - 1)
-    new_ind.suffix_idx = min(new_ind.suffix_idx, n_suffix - 1)
+    new_ind.prefix_idx = min(new_ind.prefix_idx, max(0, n_prefix - 1))
+    new_ind.suffix_idx = min(new_ind.suffix_idx, max(0, n_suffix - 1))
 
     new_ind.mutation_history.append(f"remove_strategy:{removed}")
     return new_ind
@@ -284,9 +294,13 @@ def create_random_individual(intent: str = None, generation: int = 0) -> Structu
     n_strategies = random.choices([1, 2], weights=[0.6, 0.4], k=1)[0]
     strategies = random.sample(list(STRATEGIES.keys()), n_strategies)
 
-    # Get valid indices
+    # Get valid indices (handle empty pools)
     n_prefix, _ = get_strategy_pool_sizes(strategies[0])
     _, n_suffix = get_strategy_pool_sizes(strategies[-1])
+
+    # Ensure at least 1 to avoid randint(0, -1) error
+    n_prefix = max(1, n_prefix)
+    n_suffix = max(1, n_suffix)
 
     return StructuredIndividual(
         intent=intent,
@@ -368,16 +382,26 @@ class StructuredGA:
             response_text = response.get("text", "")
         except Exception as e:
             print(f"Target error: {e}")
+            ind.response = f"Error: {e}"
             return 0.0
 
         try:
             judgment = self.judge_fn(prompt, response_text)
             score = judgment.get("score", 0.0)
+            reason = judgment.get("reason", "")
+            label = judgment.get("decision", "")
         except Exception as e:
             print(f"Judge error: {e}")
             score = 0.0
+            reason = f"Error: {e}"
+            label = "error"
 
+        # Store evaluation results on individual
         ind.fitness = score
+        ind.response = response_text
+        ind.judge_reason = reason
+        ind.judge_label = label
+
         return score
 
     def evaluate_population(self) -> List[Dict]:
@@ -394,44 +418,78 @@ class StructuredGA:
         return results
 
     def select_and_evolve(self) -> List[StructuredIndividual]:
-        """Select parents and create next generation."""
-        # Sort by fitness (descending)
-        sorted_pop = sorted(self.population, key=lambda x: x.fitness, reverse=True)
+        """Select parents and create next generation using per-intent selection.
+
+        This prevents premature convergence by maintaining diversity across intents.
+        Selection and elitism happen WITHIN each intent category, not globally.
+        """
+        # Group population by intent
+        pop_by_intent: Dict[str, List[StructuredIndividual]] = {}
+        for ind in self.population:
+            if ind.intent not in pop_by_intent:
+                pop_by_intent[ind.intent] = []
+            pop_by_intent[ind.intent].append(ind)
+
+        # Sort each intent's population by fitness
+        for intent in pop_by_intent:
+            pop_by_intent[intent].sort(key=lambda x: x.fitness, reverse=True)
 
         # Track best per intent
-        for ind in sorted_pop:
-            if ind.intent not in self.best_per_intent or ind.fitness > self.best_per_intent[ind.intent].fitness:
-                self.best_per_intent[ind.intent] = copy.deepcopy(ind)
+        for intent, intent_pop in pop_by_intent.items():
+            if intent_pop:
+                best = intent_pop[0]
+                if intent not in self.best_per_intent or best.fitness > self.best_per_intent[intent].fitness:
+                    self.best_per_intent[intent] = copy.deepcopy(best)
 
         next_gen = []
 
-        # Elitism: keep top performers
-        elites = sorted_pop[:self.elite_count]
-        for elite in elites:
-            elite_copy = copy.deepcopy(elite)
-            elite_copy.generation = self.generation + 1
-            elite_copy.mutation_history = ["elite"]
-            next_gen.append(elite_copy)
+        # Calculate how many individuals per intent (distribute evenly)
+        n_intents = len(self.intents)
+        base_per_intent = self.population_size // n_intents
+        remainder = self.population_size % n_intents
 
-        # Fill rest with mutations and crossovers
-        while len(next_gen) < self.population_size:
-            if random.random() < self.crossover_rate and len(sorted_pop) >= 2:
-                # Tournament selection for parents
-                parent1 = self._tournament_select(sorted_pop, k=3)
-                parent2 = self._tournament_select(sorted_pop, k=3)
-                child = crossover(parent1, parent2)
+        # Per-intent elites (at least 1 elite per intent if we have individuals)
+        elites_per_intent = max(1, self.elite_count // n_intents)
 
-                # Maybe also mutate
-                if random.random() < self.mutation_rate:
-                    child = mutate(child)
-            else:
-                # Tournament selection + mutation
-                parent = self._tournament_select(sorted_pop, k=3)
-                child = mutate(copy.deepcopy(parent))
+        for i, intent in enumerate(self.intents):
+            # Determine target size for this intent (distribute remainder to first few)
+            target_size = base_per_intent + (1 if i < remainder else 0)
 
-            child.generation = self.generation + 1
-            child.fitness = 0.0  # Reset fitness
-            next_gen.append(child)
+            intent_pop = pop_by_intent.get(intent, [])
+            intent_next_gen = []
+
+            # Elitism within intent: keep top performers for this intent
+            n_elites = min(elites_per_intent, len(intent_pop))
+            for elite in intent_pop[:n_elites]:
+                elite_copy = copy.deepcopy(elite)
+                elite_copy.generation = self.generation + 1
+                elite_copy.mutation_history = ["elite"]
+                intent_next_gen.append(elite_copy)
+
+            # Fill rest with mutations and crossovers WITHIN this intent
+            while len(intent_next_gen) < target_size:
+                if intent_pop and random.random() < self.crossover_rate and len(intent_pop) >= 2:
+                    # Tournament selection within intent
+                    parent1 = self._tournament_select(intent_pop, k=min(3, len(intent_pop)))
+                    parent2 = self._tournament_select(intent_pop, k=min(3, len(intent_pop)))
+                    child = crossover(parent1, parent2)
+
+                    # Maybe also mutate
+                    if random.random() < self.mutation_rate:
+                        child = mutate(child)
+                elif intent_pop:
+                    # Tournament selection + mutation within intent
+                    parent = self._tournament_select(intent_pop, k=min(3, len(intent_pop)))
+                    child = mutate(copy.deepcopy(parent))
+                else:
+                    # No individuals for this intent yet, create random
+                    child = create_random_individual(intent=intent, generation=self.generation + 1)
+
+                child.generation = self.generation + 1
+                child.fitness = 0.0  # Reset fitness
+                intent_next_gen.append(child)
+
+            next_gen.extend(intent_next_gen)
 
         return next_gen[:self.population_size]
 
@@ -525,9 +583,11 @@ def initialize_from_bandit(
             action = strategy_info["action"]  # Tuple of strategy names
             strategies = list(action)
 
-            # Get pool sizes for indices
+            # Get pool sizes for indices (handle empty pools)
             n_prefix, _ = get_strategy_pool_sizes(strategies[0])
             _, n_suffix = get_strategy_pool_sizes(strategies[-1])
+            n_prefix = max(1, n_prefix)
+            n_suffix = max(1, n_suffix)
 
             ind = StructuredIndividual(
                 intent=intent,
