@@ -14,7 +14,9 @@ fi
 
 # Load environment variables
 if [ -f .env.local ]; then
-    export $(cat .env.local | grep -v '^#' | xargs)
+    set -a
+    source .env.local
+    set +a
 fi
 
 export PYTHONPATH="$(pwd)"
@@ -79,7 +81,16 @@ for model_key in "${MODEL_KEYS[@]}"; do
     # Aggressive GPU cleanup before starting
     cleanup_gpu
 
-    # Run GA attack
+    # Run GA attack (ensure env vars are loaded)
+    source ~/miniconda3/bin/activate
+    conda activate shawshank 2>/dev/null || true
+    if [ -f .env.local ]; then
+        set -a
+        source .env.local
+        set +a
+    fi
+    export PYTHONPATH=~/shawshank
+    
     python3 -m src.experiments.run_ga_attacker \
         --target "$model_id" \
         --seeds "$SEEDS_FILE" \
