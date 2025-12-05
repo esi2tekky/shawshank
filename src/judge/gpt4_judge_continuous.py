@@ -75,7 +75,7 @@ Return ONLY valid JSON, no other text."""
 
     try:
         completion = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",
             messages=messages,
             temperature=0,
             max_tokens=200
