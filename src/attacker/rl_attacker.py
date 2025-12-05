@@ -19,6 +19,7 @@ Usage:
 
 import json
 import random
+import re
 import numpy as np
 import torch
 import torch.nn.functional as F
@@ -387,8 +388,14 @@ class RLAttacker:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
         model_name = getattr(self.target, 'model_name', None) or getattr(self.target, 'model', 'unknown')
-        # Sanitize model name for file paths (replace / and \ with _)
-        model_name = model_name.replace('/', '_').replace('\\', '_')
+        # Sanitize model name for file paths (replace /, \, and other invalid chars with _)
+        # Also remove any leading/trailing spaces and ensure it's a valid filename
+        model_name = str(model_name).replace('/', '_').replace('\\', '_').replace(' ', '_')
+        # Remove any other potentially problematic characters
+        model_name = re.sub(r'[<>:"|?*]', '_', model_name)
+        # Ensure it's not empty
+        if not model_name or model_name == '.' or model_name == '..':
+            model_name = 'unknown_model'
 
         print(f"\n{'='*60}")
         print("RL ATTACKER TRAINING")
@@ -450,20 +457,30 @@ class RLAttacker:
 
             # Save checkpoint
             if (episode + 1) % save_interval == 0:
-                self.save(output_path / f"rl_checkpoint_{model_name}_{episode+1}.pt")
+                # Construct filename as string first to avoid Path interpretation issues
+                checkpoint_filename = f"rl_checkpoint_{model_name}_{episode+1}.pt"
+                checkpoint_path = output_path / checkpoint_filename
+                self.save(checkpoint_path)
 
         # Save final model and results
-        self.save(output_path / f"rl_final_{model_name}_{timestamp}.pt")
+        final_filename = f"rl_final_{model_name}_{timestamp}.pt"
+        self.save(output_path / final_filename)
 
         # Save training history
-        with open(output_path / f"rl_history_{model_name}_{timestamp}.jsonl", "w") as f:
+        history_filename = f"rl_history_{model_name}_{timestamp}.jsonl"
+        history_path = output_path / history_filename
+        history_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(history_path, "w") as f:
             for ep_data in all_experiences:
                 # Remove non-serializable parts
                 ep_data_clean = {k: v for k, v in ep_data.items() if k != "experiences"}
                 f.write(json.dumps(ep_data_clean, default=str) + "\n")
 
         # Save detailed experiences
-        with open(output_path / f"rl_experiences_{model_name}_{timestamp}.jsonl", "w") as f:
+        experiences_filename = f"rl_experiences_{model_name}_{timestamp}.jsonl"
+        experiences_path = output_path / experiences_filename
+        experiences_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(experiences_path, "w") as f:
             for ep_data in all_experiences:
                 for exp in ep_data.get("experiences", []):
                     f.write(json.dumps(exp, default=str) + "\n")
