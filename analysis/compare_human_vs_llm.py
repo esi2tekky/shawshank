@@ -26,7 +26,7 @@ from sklearn.metrics import cohen_kappa_score, accuracy_score, confusion_matrix
 
 # ==== CONFIG ====
 HUMAN_CSV = "data/human_baseline_labeled.csv"
-LLM_CSV = "data/gpt_baseline_attack.csv"
+LLM_CSV = "data/gpt_baseline_labeled.csv"
 OUT_DIR = Path("analysis/figures/comparison")
 SUMMARY_PATH = Path("analysis/human_vs_llm_comparison.md")
 OUT_DIR.mkdir(parents=True, exist_ok=True)

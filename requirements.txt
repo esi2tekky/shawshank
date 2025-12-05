@@ -8,3 +8,7 @@ sentence-transformers
 pandas
 matplotlib
 seaborn
+vllm
+torch
+transformers
+accelerate
