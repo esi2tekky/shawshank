@@ -2,6 +2,9 @@
 # Controlled variable: Alignment Stage. 
 # Constants: Base model (Llama 3.1 8B), Training Data (Tulu recipe).
 OPEN_SOURCE_MODELS = {
+    # 0. Base Model (No Alignment)
+    "llama_base": "meta-llama/Llama-3.1-8B",
+    
     # 1. The Vulnerable Instruction Follower
     "tulu_sft": "allenai/Llama-3.1-Tulu-3-8B-SFT",
     

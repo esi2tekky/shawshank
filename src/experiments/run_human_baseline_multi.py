@@ -49,10 +49,16 @@ def run_single_model(seeds_path, model_key, model_id, output_dir):
     print(f"{'='*60}\n")
     
     # Initialize target using factory
+    target = None
     try:
         target = load_target(model_id)
     except Exception as e:
         print(f"ERROR: Failed to load model {model_key}: {e}")
+        # Clean up any partial GPU memory allocation
+        import gc
+        import torch
+        gc.collect()
+        torch.cuda.empty_cache()
         return None
     
     # Prepare output file
@@ -153,15 +159,29 @@ def run_all_tulu_models(seeds_path, output_dir, model_keys=None):
         model_id = OPEN_SOURCE_MODELS[model_key]
         
         try:
+            # Ensure GPU is free before loading next model
+            import torch
+            import gc
+            torch.cuda.empty_cache()
+            gc.collect()
+            
             output_path = run_single_model(seeds_path, model_key, model_id, output_dir)
             if output_path:
                 results_summary[model_key] = str(output_path)
         except Exception as e:
             print(f"ERROR: Failed to run {model_key}: {e}")
             results_summary[model_key] = f"ERROR: {e}"
+            # Clean up on error
+            try:
+                import torch
+                import gc
+                torch.cuda.empty_cache()
+                gc.collect()
+            except:
+                pass
         
-        # Small delay between models
-        time.sleep(2)
+        # Delay between models to ensure cleanup completes
+        time.sleep(5)
     
     # Print summary
     print(f"\n{'='*60}")
@@ -195,8 +215,8 @@ if __name__ == "__main__":
         "--models",
         nargs="+",
         default=["tulu_sft", "tulu_dpo", "tulu_rlvr"],
-        choices=["tulu_sft", "tulu_dpo", "tulu_rlvr"],
-        help="Which Tulu models to run (default: all three)"
+        choices=["tulu_sft", "tulu_dpo", "tulu_rlvr", "llama_base"],
+        help="Which models to run (default: all three Tulu models)"
     )
     
     args = parser.parse_args()
