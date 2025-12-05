@@ -1,7 +1,8 @@
 """
 analysis/analyze_tulu_comparison.py
 -----------------------------------
-Comprehensive comparison of the three Tulu post-training variants:
+Comprehensive comparison of base model and Tulu post-training variants:
+- llama_base (Base Llama-3.1-8B - no alignment)
 - tulu_sft (Supervised Fine-Tuning)
 - tulu_dpo (Direct Preference Optimization)
 - tulu_rlvr (RLHF - Reinforcement Learning)
@@ -11,7 +12,7 @@ Analyzes:
 - ASR by category across models
 - Judge decision distributions
 - Model response characteristics
-- Comparative statistics
+- Comparative statistics (base vs aligned variants)
 """
 
 import json
@@ -28,8 +29,9 @@ OUT_DIR = Path("analysis/figures/tulu_comparison")
 SUMMARY_PATH = Path("analysis/tulu_comparison_summary.md")
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
-MODELS = ["tulu_sft", "tulu_dpo", "tulu_rlvr"]
+MODELS = ["llama_base", "tulu_sft", "tulu_dpo", "tulu_rlvr"]
 MODEL_LABELS = {
+    "llama_base": "Llama Base",
     "tulu_sft": "Tulu SFT",
     "tulu_dpo": "Tulu DPO",
     "tulu_rlvr": "Tulu RLVR"
