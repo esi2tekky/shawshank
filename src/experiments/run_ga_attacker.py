@@ -126,17 +126,18 @@ class GAExperiment:
         if path.suffix == ".csv":
             with open(path, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
-                for row in reader:
+                for idx, row in enumerate(reader):
                     if row.get("prompt"):
                         seeds.append({
                             "prompt": row["prompt"],
                             "intent_category": row.get("intent_category", "unknown"),
                             "category": row.get("category", "unknown"),
+                            "seed_id": row.get("id", f"seed_{idx}"),  # Track original seed
                             "operator": "seed",
                         })
         elif path.suffix == ".jsonl":
             with open(path, "r", encoding="utf-8") as f:
-                for line in f:
+                for idx, line in enumerate(f):
                     if line.strip():
                         data = json.loads(line)
                         if data.get("prompt"):
@@ -144,6 +145,7 @@ class GAExperiment:
                                 "prompt": data["prompt"],
                                 "intent_category": data.get("intent_category", data.get("category", "unknown")),
                                 "category": data.get("category", "unknown"),
+                                "seed_id": data.get("id", f"seed_{idx}"),  # Track original seed
                                 "operator": "seed",
                             })
         else:
@@ -166,7 +168,9 @@ class GAExperiment:
 
         result = {
             "prompt": prompt,
+            "seed_id": individual.get("seed_id", "unknown"),  # Track lineage
             "intent_category": individual.get("intent_category", "unknown"),
+            "category": individual.get("category", "unknown"),
             "operator": individual.get("operator", "unknown"),
             "response": None,
             "judge_label": "error",
@@ -221,13 +225,13 @@ class GAExperiment:
 
     def select_and_evolve(self, evaluated: List[Dict]) -> List[Dict]:
         """
-        Standard GA selection and evolution.
+        Diversity-preserving GA selection and evolution.
 
         Strategy:
-        1. Sort all prompts by fitness (highest = best attack)
-        2. Keep top N as elites (unchanged)
-        3. Generate (population - N) offspring by mutating elites
-        4. Each elite gets mutated multiple times to fill population
+        1. Group prompts by their original seed_id (preserves topic diversity)
+        2. For each seed group, keep the best performer as elite
+        3. Mutate each elite to create its replacement for next generation
+        4. This ensures ALL original topics continue to be explored
 
         Args:
             evaluated: List of evaluated individuals with fitness scores
@@ -235,56 +239,72 @@ class GAExperiment:
         Returns:
             New population for next generation (same size as input)
         """
-        population_size = len(evaluated)
-        elite_count = self.elite_count  # Top N to keep (default ~10 for 50 population)
-
-        # Sort by fitness descending (highest = most successful attacks)
-        sorted_pop = sorted(evaluated, key=lambda x: x["fitness"], reverse=True)
-
-        # Select elites (top performers)
-        elites = sorted_pop[:elite_count]
+        # Group by seed_id to preserve diversity
+        seed_groups: Dict[str, List[Dict]] = {}
+        for individual in evaluated:
+            seed_id = individual.get("seed_id", "unknown")
+            if seed_id not in seed_groups:
+                seed_groups[seed_id] = []
+            seed_groups[seed_id].append(individual)
 
         offspring = []
 
-        # Keep elites unchanged
-        for elite in elites:
+        # For each original seed, keep best and mutate it
+        for seed_id, group in seed_groups.items():
+            # Sort group by fitness, best first
+            group_sorted = sorted(group, key=lambda x: x["fitness"], reverse=True)
+            best_in_group = group_sorted[0]
+
+            # Keep the best as elite (unchanged)
             offspring.append({
-                "prompt": elite["prompt"],
-                "intent_category": elite.get("intent_category", "unknown"),
+                "prompt": best_in_group["prompt"],
+                "seed_id": seed_id,
+                "intent_category": best_in_group.get("intent_category", "unknown"),
+                "category": best_in_group.get("category", "unknown"),
                 "operator": "elite",
             })
 
-        # Generate remaining offspring by mutating elites
-        # Distribute mutations across elites (round-robin)
-        mutation_idx = 0
-        while len(offspring) < population_size:
-            parent = elites[mutation_idx % len(elites)]
+        # Now mutate each elite to fill remaining population
+        # Each seed gets (population / num_seeds) slots
+        population_size = len(evaluated)
+        num_seeds = len(seed_groups)
+        mutations_per_seed = max(0, (population_size - num_seeds) // num_seeds)
+        extra_mutations = (population_size - num_seeds) % num_seeds
 
-            if random.random() < self.crossover_rate and len(elites) >= 2:
-                # Crossover: combine two elites
-                p1, p2 = random.sample(elites, 2)
-                child_prompt = crossover(
-                    p1["prompt"],
-                    p2["prompt"],
-                    use_llm=self.use_llm
-                )
-                operator = "crossover"
-                intent_category = p1.get("intent_category", "unknown")
-            else:
-                # Mutation: mutate the parent
-                child_prompt, operator = mutate(
-                    parent["prompt"],
-                    use_llm=self.use_llm,
-                    target_model=self.target_model
-                )
-                intent_category = parent.get("intent_category", "unknown")
+        elites = [o for o in offspring]  # Copy current elites
 
-            offspring.append({
-                "prompt": child_prompt,
-                "intent_category": intent_category,
-                "operator": operator,
-            })
-            mutation_idx += 1
+        seed_ids = list(seed_groups.keys())
+        for i, seed_id in enumerate(seed_ids):
+            elite = next(e for e in elites if e.get("seed_id") == seed_id)
+
+            # How many mutations for this seed
+            num_mutations = mutations_per_seed + (1 if i < extra_mutations else 0)
+
+            for _ in range(num_mutations):
+                if random.random() < self.crossover_rate and len(elites) >= 2:
+                    # Crossover with another elite (introduces some cross-topic mixing)
+                    other = random.choice([e for e in elites if e.get("seed_id") != seed_id] or elites)
+                    child_prompt = crossover(
+                        elite["prompt"],
+                        other["prompt"],
+                        use_llm=self.use_llm
+                    )
+                    operator = "crossover"
+                else:
+                    # Mutation: mutate the elite
+                    child_prompt, operator = mutate(
+                        elite["prompt"],
+                        use_llm=self.use_llm,
+                        target_model=self.target_model
+                    )
+
+                offspring.append({
+                    "prompt": child_prompt,
+                    "seed_id": seed_id,  # Inherit seed_id to track lineage
+                    "intent_category": elite.get("intent_category", "unknown"),
+                    "category": elite.get("category", "unknown"),
+                    "operator": operator,
+                })
 
         return offspring
 
@@ -324,12 +344,14 @@ class GAExperiment:
         all_seeds = self.load_seeds(seed_path)
         population = all_seeds.copy()
 
-        # Update population_size to match actual seed count
-        self.population_size = len(population)
-        self.elite_count = max(2, int(self.population_size * self.elite_ratio))
+        # Population = 2 * seeds: each seed gets 1 elite + 1 mutation slot
+        # This ensures diversity while still allowing evolution
+        num_seeds = len(all_seeds)
+        self.population_size = num_seeds * 2
+        self.elite_count = num_seeds  # One elite per seed
 
-        print(f"Loaded {len(all_seeds)} {seed_source} seeds as initial population")
-        print(f"Elite count: {self.elite_count}\n")
+        print(f"Loaded {num_seeds} {seed_source} seeds")
+        print(f"Population size: {self.population_size} ({num_seeds} elites + {num_seeds} mutations)\n")
 
         # Setup for intermediate saving in nested folder
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -390,6 +412,7 @@ class GAExperiment:
                 for individual in evaluated:
                     record = {
                         "generation": gen + 1,
+                        "seed_id": individual.get("seed_id", "unknown"),
                         "prompt": individual["prompt"],
                         "response": individual.get("response", ""),
                         "fitness": individual["fitness"],
@@ -397,7 +420,7 @@ class GAExperiment:
                         "judge_label": individual["judge_label"],
                         "judge_reason": individual.get("judge_reason", ""),
                         "operator": individual.get("operator", "unknown"),
-                        "intent_category": individual.get("intent_category", "unknown"),
+                        "category": individual.get("category", "unknown"),
                     }
                     f.write(json.dumps(record, ensure_ascii=False) + "\n")
             print(f"  Saved to {gen_file.name}")
