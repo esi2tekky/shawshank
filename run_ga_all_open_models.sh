@@ -31,7 +31,7 @@ declare -A MODELS=(
 
 MODEL_KEYS=("llama_base" "tulu_sft" "tulu_dpo" "tulu_rlvr")
 SEEDS_FILE="data/human_baseline.csv"
-GENERATIONS=10
+GENERATIONS=5
 OUTPUT_DIR="results/ga_attacks"
 
 echo "=========================================="
