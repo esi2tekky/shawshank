@@ -215,8 +215,8 @@ if __name__ == "__main__":
         "--models",
         nargs="+",
         default=["tulu_sft", "tulu_dpo", "tulu_rlvr"],
-        choices=["tulu_sft", "tulu_dpo", "tulu_rlvr"],
-        help="Which Tulu models to run (default: all three)"
+        choices=["tulu_sft", "tulu_dpo", "tulu_rlvr", "llama_base"],
+        help="Which models to run (default: all three Tulu models)"
     )
     
     args = parser.parse_args()
