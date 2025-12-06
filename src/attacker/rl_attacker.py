@@ -1,21 +1,4 @@
-"""
-src/attacker/rl_attacker.py
----------------------------
-RL-based adversarial prompt attacker using policy gradient methods.
-
-Implements REINFORCE with baseline for learning to select effective
-attack strategies. Supports multi-step episodes where the agent can
-iteratively refine its approach based on model responses.
-
-Key Features:
-- Actor-Critic architecture for stable learning
-- Multi-step episodes with adaptive strategy selection
-- Experience replay for sample efficiency
-- Checkpointing and resumable training
-
-Usage:
-    python -m src.attacker.rl_attacker --target gpt-4o --episodes 100
-"""
+"""RL-based adversarial attacker using policy gradients."""
 
 import json
 import random
@@ -51,10 +34,6 @@ from src.attacker.bandit_attacker import (
 )
 
 
-# ============================================================================
-# EXPERIENCE STORAGE
-# ============================================================================
-
 @dataclass
 class Experience:
     """Single step of experience."""
@@ -74,7 +53,7 @@ class Experience:
 
 
 class EpisodeBuffer:
-    """Buffer to store experiences from a single episode."""
+    """Buffer for experiences from a single episode."""
 
     def __init__(self):
         self.experiences: List[Experience] = []
@@ -83,7 +62,6 @@ class EpisodeBuffer:
         self.experiences.append(exp)
 
     def compute_returns(self, gamma: float = 0.99) -> List[float]:
-        """Compute discounted returns for each step."""
         returns = []
         G = 0
         for exp in reversed(self.experiences):
@@ -92,7 +70,7 @@ class EpisodeBuffer:
         return returns
 
     def compute_advantages(self, gamma: float = 0.99, gae_lambda: float = 0.95) -> List[float]:
-        """Compute Generalized Advantage Estimation (GAE)."""
+        """Compute GAE advantages."""
         advantages = []
         gae = 0
 
@@ -117,16 +95,8 @@ class EpisodeBuffer:
         return len(self.experiences)
 
 
-# ============================================================================
-# RL ATTACKER AGENT
-# ============================================================================
-
 class RLAttacker:
-    """
-    RL-based adversarial prompt attacker.
-
-    Uses policy gradient methods to learn effective attack strategies.
-    """
+    """RL attacker using policy gradients to learn attack strategies."""
 
     def __init__(
         self,
@@ -154,7 +124,6 @@ class RLAttacker:
         self.success_threshold = success_threshold
         self.device = device
 
-        # Initialize actor-critic network
         self.model = ActorCritic(
             state_dim=RLState.state_dim(),
             hidden_dim=hidden_dim,
@@ -163,7 +132,6 @@ class RLAttacker:
 
         self.optimizer = Adam(self.model.parameters(), lr=lr)
 
-        # Tracking
         self.episode_rewards: List[float] = []
         self.episode_lengths: List[int] = []
         self.episode_successes: List[bool] = []
@@ -174,16 +142,7 @@ class RLAttacker:
         state: RLState,
         deterministic: bool = False
     ) -> Tuple[int, float, float]:
-        """
-        Select action using current policy.
-
-        Args:
-            state: Current state
-            deterministic: If True, select greedy action
-
-        Returns:
-            Tuple of (action_idx, log_prob, value)
-        """
+        """Select action using current policy. Returns (action_idx, log_prob, value)."""
         state_tensor = state.to_tensor().to(self.device)
 
         with torch.no_grad():
@@ -198,17 +157,7 @@ class RLAttacker:
         intent: str = None,
         deterministic: bool = False,
     ) -> Tuple[EpisodeBuffer, Dict]:
-        """
-        Run a single episode of interaction.
-
-        Args:
-            intent: Specific intent to attack (random if None)
-            deterministic: Whether to use greedy action selection
-
-        Returns:
-            Tuple of (experience_buffer, episode_info)
-        """
-        # Sample random intent if not specified
+        """Run a single episode. Returns (buffer, episode_info)."""
         if intent is None:
             intent = random.choice(INTENT_LIST)
 
@@ -300,61 +249,37 @@ class RLAttacker:
         return buffer, episode_info
 
     def train_on_episode(self, buffer: EpisodeBuffer) -> Dict[str, float]:
-        """
-        Update policy using experiences from one episode.
-
-        Uses REINFORCE with baseline (advantage estimation).
-
-        Args:
-            buffer: Episode experience buffer
-
-        Returns:
-            Dict of training metrics
-        """
+        """Update policy using one episode of experience."""
         if len(buffer) == 0:
             return {}
 
-        # Compute returns and advantages
         returns = buffer.compute_returns(self.gamma)
         advantages = buffer.compute_advantages(self.gamma, self.gae_lambda)
 
-        # Convert to tensors
         states = torch.stack([exp.state.to_tensor() for exp in buffer.experiences]).to(self.device)
         actions = torch.tensor([exp.action_idx for exp in buffer.experiences]).to(self.device)
         old_log_probs = torch.tensor([exp.log_prob for exp in buffer.experiences]).to(self.device)
         returns_tensor = torch.tensor(returns, dtype=torch.float32).to(self.device)
         advantages_tensor = torch.tensor(advantages, dtype=torch.float32).to(self.device)
 
-        # Normalize advantages
         if len(advantages_tensor) > 1:
             advantages_tensor = (advantages_tensor - advantages_tensor.mean()) / (advantages_tensor.std() + 1e-8)
 
-        # Forward pass
         log_probs, values, entropy = self.model.evaluate_action(states, actions)
 
-        # Policy loss (negative because we want to maximize)
         policy_loss = -(log_probs * advantages_tensor).mean()
-
-        # Value loss
         value_loss = F.mse_loss(values, returns_tensor)
-
-        # Entropy bonus (encourages exploration)
         entropy_loss = -entropy.mean()
 
-        # Total loss
         total_loss = (
             policy_loss +
             self.value_coef * value_loss +
             self.entropy_coef * entropy_loss
         )
 
-        # Backward pass
         self.optimizer.zero_grad()
         total_loss.backward()
-
-        # Gradient clipping
         torch.nn.utils.clip_grad_norm_(self.model.parameters(), self.max_grad_norm)
-
         self.optimizer.step()
 
         return {
@@ -371,17 +296,7 @@ class RLAttacker:
         save_interval: int = 50,
         output_dir: str = "results/rl_attacks",
     ) -> Dict:
-        """
-        Train the RL agent.
-
-        Args:
-            num_episodes: Number of episodes to train
-            log_interval: How often to print progress
-            save_interval: How often to save checkpoints
-
-        Returns:
-            Training summary
-        """
+        """Train the RL agent."""
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -490,7 +405,6 @@ class RLAttacker:
         return summary
 
     def save(self, path: str):
-        """Save model checkpoint."""
         torch.save({
             "model_state_dict": self.model.state_dict(),
             "optimizer_state_dict": self.optimizer.state_dict(),
@@ -501,7 +415,6 @@ class RLAttacker:
         print(f"Saved checkpoint to {path}")
 
     def load(self, path: str):
-        """Load model checkpoint."""
         checkpoint = torch.load(path, map_location=self.device)
         self.model.load_state_dict(checkpoint["model_state_dict"])
         self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
@@ -515,16 +428,7 @@ class RLAttacker:
         num_episodes: int = 50,
         intents: List[str] = None,
     ) -> Dict:
-        """
-        Evaluate the trained policy.
-
-        Args:
-            num_episodes: Number of evaluation episodes
-            intents: Specific intents to evaluate (all if None)
-
-        Returns:
-            Evaluation metrics
-        """
+        """Evaluate the trained policy."""
         if intents is None:
             intents = INTENT_LIST
 
@@ -561,10 +465,6 @@ class RLAttacker:
             "by_intent": results_by_intent,
         }
 
-
-# ============================================================================
-# CLI
-# ============================================================================
 
 if __name__ == "__main__":
     import argparse

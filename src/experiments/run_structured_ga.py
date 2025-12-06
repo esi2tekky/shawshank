@@ -38,11 +38,11 @@ from src.attacker.bandit_attacker import (
 @dataclass
 class StructuredIndividual:
     """A structured prompt representation for evolution."""
-    intent: str                      # e.g., "weapons", "hacking"
-    intent_action: str               # e.g., "how to make a pipe bomb"
-    strategies: List[str]            # e.g., ["persona", "hypothetical"]
-    prefix_idx: int                  # Index into first strategy's prefix pool
-    suffix_idx: int                  # Index into last strategy's suffix pool
+    intent: str                      
+    intent_action: str               
+    strategies: List[str]            
+    prefix_idx: int                  
+    suffix_idx: int                  
 
     # Tracking
     fitness: float = 0.0
