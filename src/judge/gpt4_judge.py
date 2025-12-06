@@ -39,7 +39,7 @@ def judge(prompt: str, response: str) -> dict:
 
     try:
         completion = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",  # Use GPT-4o-mini for cost effectiveness
             messages=messages,
             temperature=0,
             max_tokens=200

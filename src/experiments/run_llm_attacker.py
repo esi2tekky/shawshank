@@ -16,15 +16,16 @@ import argparse
 from pathlib import Path
 from tqdm import tqdm
 
-from src.target.local_proxy import LocalProxy
+from src.target.target_factory import load_target
 from src.judge.gpt4_judge import judge
+import gc
+import torch
 
 
 def run_llm_baseline(
     input_csv: str,
     output_csv: str = None,
-    target_name: str = "openai",
-    target_model: str = "gpt-4",
+    target_model: str = None,  # Can be model key (e.g., "tulu_sft") or full ID
     max_tokens: int = 300
 ):
     """
@@ -33,8 +34,7 @@ def run_llm_baseline(
     Args:
         input_csv: Path to CSV from gpt_attacker.py (e.g., data/gpt_baseline.csv)
         output_csv: Output path (default: auto-generate from input_csv)
-        target_name: "local" or "openai"
-        target_model: Model name if using OpenAI target
+        target_model: Model identifier (e.g., "tulu_sft", "gpt-4o", or full HF path)
         max_tokens: Maximum tokens for target model response (default: 300)
     """
     input_path = Path(input_csv)
@@ -43,22 +43,22 @@ def run_llm_baseline(
         print(f"Input file not found: {input_path}")
         return
 
+    if target_model is None:
+        print("Error: --target_model is required")
+        return
+
     # Auto-generate output filename if not provided
     if output_csv is None:
-        # Replace .csv with _attack.csv
-        output_csv = str(input_path).replace(".csv", "_results.csv")
+        # Use model name in output filename
+        model_safe = target_model.replace("/", "_").replace(":", "_")
+        output_csv = str(input_path.parent / f"{input_path.stem}_{model_safe}_results.csv")
 
     output_path = Path(output_csv)
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Initialize target
-    if target_name == "openai":
-        from src.target.openai_target import OpenAITarget
-        target = OpenAITarget(model=target_model, max_tokens=max_tokens)
-        print(f"Using OpenAI target: {target_model} (max_tokens={max_tokens})")
-    else:
-        target = LocalProxy()
-        print(f"Using local proxy target")
+    # Initialize target using factory (supports both OpenAI and vLLM)
+    print(f"Loading target model: {target_model}")
+    target = load_target(target_model)
 
     # Read input CSV
     with open(input_path, "r", encoding="utf-8") as f:
@@ -132,6 +132,17 @@ def run_llm_baseline(
     print(f"   Noncompliant (successful attacks): {noncompliant} ({asr:.1f}%)")
     print(f"   Compliant (blocked): {compliant}")
     print(f"   Errors: {errors}")
+    
+    # Cleanup GPU memory if using vLLM
+    if hasattr(target, 'llm'):
+        print("Cleaning up GPU memory...")
+        if hasattr(target, 'cleanup'):
+            target.cleanup()
+        else:
+            del target.llm
+            del target
+            gc.collect()
+            torch.cuda.empty_cache()
 
 
 if __name__ == "__main__":
@@ -149,15 +160,9 @@ if __name__ == "__main__":
         help="Output CSV path (default: auto-generate with '_attack.csv' suffix)"
     )
     parser.add_argument(
-        "--target",
-        choices=["local", "openai"],
-        default="openai",
-        help="Target model to test"
-    )
-    parser.add_argument(
         "--target_model",
-        default="gpt-4",
-        help="Model name if using OpenAI target"
+        required=True,
+        help="Target model identifier (e.g., 'tulu_sft', 'gpt-4o', or full HF path like 'allenai/Llama-3.1-Tulu-3-8B-SFT')"
     )
     parser.add_argument(
         "--max_tokens",
@@ -171,7 +176,6 @@ if __name__ == "__main__":
     run_llm_baseline(
         input_csv=args.input,
         output_csv=args.output,
-        target_name=args.target,
         target_model=args.target_model,
         max_tokens=args.max_tokens
     )
