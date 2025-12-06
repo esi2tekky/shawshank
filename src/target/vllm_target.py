@@ -36,4 +36,15 @@ class VLLMTarget(TargetAPI):
                 "backend": "vllm"
             }
         }
+    
+    def cleanup(self):
+        """Properly shut down vLLM engine and free GPU memory."""
+        if hasattr(self, 'llm') and self.llm is not None:
+            # vLLM doesn't have explicit shutdown method, but deleting should trigger cleanup
+            del self.llm
+            self.llm = None
+            import gc
+            gc.collect()
+            import torch
+            torch.cuda.empty_cache()
 
